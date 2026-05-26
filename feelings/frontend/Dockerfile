@@ -10,7 +10,7 @@ RUN npm install
 COPY public/ public/
 COPY src/ src/
 ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=${REACT_APP_API_URL:-http://feelings-backend:5000}
+ENV REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost}
 
 RUN echo $REACT_APP_URI_URL
 
