@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  custom.json: |
+    {
+      "saludo_custom": "¡Hola desde un ConfigMap de OpenShift!"
+    }
