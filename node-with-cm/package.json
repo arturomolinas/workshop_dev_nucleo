@@ -1,0 +1,15 @@
+{
+  "name": "openshift-hello-world-with-cm",
+  "version": "1.0.0",
+  "description": "App básica de Node.js para despliegue en OpenShift con ConfigMap",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
