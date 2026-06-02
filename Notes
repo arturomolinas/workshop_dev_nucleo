@@ -1,0 +1,836 @@
+### Preview
+
+Diferencias entre desarrollo tradicional orientado a middleware vs contenedores
+pom.xml
+```
+<dependencies>
+    <dependency>
+        <groupId>jakarta.platform</groupId>
+        <artifactId>jakarta.jakartaee-api</artifactId>
+        <version>10.0.0</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+jboss-deployment-structure.xml
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss-deployment-structure>
+    <deployment>
+        <dependencies>
+            <module name="org.apache.log4j" />
+        </dependencies>
+    </deployment>
+</jboss-deployment-structure>
+```
+Java Code
+```
+import org.apache.log4j.Logger;
+public class MiServicio {
+    
+    private static final Logger logger = Logger.getLogger(MiServicio.class);
+    public void ejecutar() { 
+	    logger.info("Logueando desde WildFly usando el módulo del servidor.");
+	}
+}
+```
+
+
+pom.xml containerized
+```
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-log4j2</artifactId>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+    </plugins>
+</build>
+```
+
+|**Característica**|**En WildFly (Tradicional)**|**En Docker (Moderno / Microservicios)**|
+|---|---|---|
+|**Tamaño del artefacto**|**Muy pequeño (KB o pocos MB).** Solo contiene tu código de negocio recopilado.|**Grande (50MB - 200MB+).** Contiene tu código + Tomcat/Netty + todas las librerías necesarias.|
+|**Gestión de dependencias**|Compartida. Si actualizas la versión de Log4j en WildFly, afecta a todas las Apps que dependan de ese módulo.|Aislada. Cada contenedor tiene exactamente la versión de la librería con la que fue compilado.|
+|**Configuración del Entorno**|Compleja. Requiere configurar datasources, colas JMS y módulos en el `standalone.xml` del servidor.|Simple. Todo se configura por variables de entorno directamente al contenedor.|
+
+
+1. Node.js (Express)
+Basico
+```
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["node", "app.js"]
+```
+Build app
+```
+podman build -t basic-node:basic -f Dockerfile.basic .
+```
+Avanzado
+```
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+
+RUN npm ci
+COPY . .
+
+FROM node:20-alpine AS dependency-cleaner
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=dependency-cleaner /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+COPY . .
+
+USER node
+
+EXPOSE 3000
+CMD ["node", "app.js"]
+```
+
+Build app
+```
+podman build -t basic-node:ms -f Dockerfile.multi-stage .
+```
+
+| **Comando**                    | **¿Dónde se usa principalmente?** | **¿Incluye devDependencies?** | **Propósito Clave**                                               |
+| ------------------------------ | --------------------------------- | ----------------------------- | ----------------------------------------------------------------- |
+| **`npm install`**              | Máquina Local (Desarrollo)        | Sí                            | Descargar librerías y experimentar.                               |
+| **`npm ci`**                   | Dockerfile (Etapa de compilación) | Sí                            | Instalación rápida y exacta para poder compilar (ej. TypeScript). |
+| **`npm ci --only=production`** | Dockerfile (Etapa de ejecución)   | **No**                        | Minimizar el tamaño y asegurar la imagen de producción.           |
+| **`npm run build`**            | Dockerfile (Etapa de compilación) | N/A                           | Generar el código JavaScript final listo para ser empaquetado.    |
+| **`npm start`**                | Dockerfile (Directiva `CMD`)      | N/A                           | Levantar el servidor web dentro del contenedor de OpenShift.      |
+
+2. Quarkus (Java 21)
+```
+# =============================================================
+#  DOCKERFILE BÁSICO — una sola etapa
+
+FROM eclipse-temurin:21
+
+# Instalar Maven desde los repositorios de Debian
+# Esto descarga Maven + sus dependencias transitivas
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends maven && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar el proyecto completo (fuentes incluidas)
+COPY pom.xml .
+COPY src ./src
+
+# Descargar dependencias y compilar
+RUN mvn package -DskipTests
+
+EXPOSE 8080
+
+# Arrancar la aplicación Quarkus (fast-jar)
+CMD ["java", "-jar", "target/quarkus-app/quarkus-run.jar"]
+```
+Build app
+```
+./mvn clean package -DskipTest
+```
+
+Build image
+```
+podman build -t quarkus-demo:basic -f Dockerfile.basic .
+```
+
+| **Comando**                        | **¿Dónde se usa principalmente?** | **¿Requiere GraalVM?** | **Propósito Clave**                                                                            |
+| ---------------------------------- | --------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| **`./mvnw quarkus:dev`**           | Máquina Local (Desarrollo)        | No                     | Programar con _Live Coding_ y recarga en vivo sin compilar manualmente.                        |
+| **`./mvnw dependency:go-offline`** | Dockerfile (Etapa intermedia)     | No                     | Descargar y cachear todas las dependencias de Maven para acelerar futuros builds.              |
+| **`./mvnw package -DskipTests`**   | Dockerfile (Modo JVM estándar)    | No                     | Generar el artefacto **Fast-jar** optimizado para su ejecución en una imagen con JRE 21.       |
+| **`./mvnw package -Dnative`**      | Dockerfile (Modo Nativo Avanzado) | **Sí** (En el builder) | Crear un binario nativo de Linux para arranque inmediato y consumo mínimo de RAM en OpenShift. |
+
+Tipos de API Server
+- Kubernetes API Server: 
+	Funcion: punto de entrada para todas las herramientas externas (oc, kubectl)
+	Pods: kube-apiserver-master-node
+	Namespace: openshift-kube-apiserver
+- OpenShift API Server: 
+	Funcion: maneja los recursos especificos de OpenShift
+	Pods: apiserver-hash
+	Namespace: openshift-apiserver
+- OpenShift OAuth API Server: apiserver-hash
+	Funcion: se encarga de la autenticacion y gestion de tokens de usuarios
+	Pods: apiserver-hash
+	Namespace: openshift-oauth-apiserver
+
+Etcd
+Pods: etcd-cluster-master-node
+Namespace: openshift-etcd
+
+
+
+Hello World
+```
+oc new-app https://github.com/rgerardi/hellogo.git
+```
+Parks Map
+```
+oc new-app quay.io/openshiftroadshow/parksmap:latest --name=parksmap
+```
+
+Service Discovery
+```
+oc new-app --name alpaca --image jmutai/kuard-amd64:blue
+```
+
+Deploy feelings app
+Deploy hello-node
+Deploy python-basic
+Deploy node-with-cm y ejecutar:
+```
+oc set volume deployment/config-app --add --name=config-volume \ --type=configmap --configmap-name=app-config \ --mount-path=/opt/app-root/config oc expose svc/config-app
+```
+Deploy python-ready
+```
+oc set probe deployment/probe-app --liveness --get-url=http://:8080/healthz --initial-delay-seconds=5
+oc set probe deployment/probe-app --readiness --get-url=http://:8080/ready --initial-delay-seconds=5
+```
+
+
+Configurar WebHook en GitHub para push de Build
+
+```bash
+oc describe bc python-basic -n admin-admin | grep -A5 "GitHub"
+```
+Obtener Secret de BC
+```
+oc get bc/python-basic -o yaml | grep -C 5 triggers
+```
+
+Extraer el secret
+
+```
+oc extract secret/java-app-github-webhook-secret --to=-
+```
+Validar que existe el clusterrole system:build-webhook
+```bash
+oc get clusterrole system:build-webhook
+```
+Si no existe, crearlo
+```
+cat <<'EOF' | oc apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:build-webhook
+rules:
+- apiGroups:
+  - build.openshift.io
+  resources:
+  - buildconfigs/webhooks
+  verbs:
+  - create
+  - get
+EOF
+```
+Vincular el clusterrole con el user system:anonymous
+```
+oc create clusterrolebinding system:build-webhook \
+  --clusterrole=system:build-webhook \
+  --user=system:anonymous
+```
+
+### Validar variable desde Dockerfile y desde BuildConfig y Deployment
+### Configurar ruta con un DNS custom
+```
+oc create route edge <route-name> --service=<service-name> --hostname=<your-domain.com>
+```
+### Configurar Network Policies
+
+```
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: permitir-python-hacia-nginx
+  namespace: admin-2 # Se aplica en el destino (donde está Nginx)
+spec:
+  podSelector:
+    matchLabels:
+      deployment: nginx # El pod "objetivo" que queremos proteger
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080 # O el puerto real en el que escuche tu Nginx
+      from:
+        # Combinación de ambos selectores (Lógica AND)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: admin-admin # 1. Filtra el Namespace origen
+          podSelector:
+            matchLabels:
+              deployment: python-basic # 2. Filtra el Pod específico dentro de ese Namespace
+```
+
+### Taint y tolerations
+
+Aplicar taint a un nodo
+```
+oc taint nodes <nombre-de-tu-nodo> workload-type=production:NoSchedule
+```
+
+Aplicar nodeSelector a un deployment
+```
+nodeSelector:
+    workload-type: production
+```
+Aplicar NodeAffinity de ambas formas
+```
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100 # Prioridad alta para esta regla (de 1 a 100)
+            preference:
+              matchExpressions:
+              - key: workload-type
+                operator: In
+                values:
+                - production
+```
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-hard-affinity
+  namespace: admin-admin
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+      
+      # 1. EL PASE DE ACCESO: Permite al pod entrar si el nodo tiene un Taint
+      tolerations:
+        - key: workload-type
+          operator: Equal
+          value: production
+          effect: NoSchedule
+
+      # 2. EL IMÁN COMPULSORIO: Obliga al pod a buscar nodos con etiquetas específicas
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: storage-type
+                operator: In
+                values:
+                - fast
+```
+
+### NoodeSelector vs NodeAffinity
+Ejecutarse en nodos de zone-1 o zone-2
+```
+operator: In
+values: [zone-1, zone-2]
+```
+
+o ejecutarse en nodos legacy-worker
+```
+operator: NotIn
+values: [legacy-worker]
+```
+```
+- key: gpu
+  operator: Exists
+```
+### PodDisruptionBadge
+```
+# Garantizar mínimo 2 pods disponibles
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: python-basic-pdb
+spec:
+  minAvailable: 2       # o usar maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: python-basic
+```
+Si tienes 2 réplicas y `minAvailable: 2`, el drenado de un nodo quedará **bloqueado** — OpenShift no podrá desalojar el pod. Para el workshop es un buen ejercicio mostrar ese bloqueo y resolverlo aumentando réplicas a 3
+
+### HPA para aplicacion python-basic
+```
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: python-basic-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: python-basic
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+Requisito: el Deployment **debe tener `resources.requests` definidos**, si no el HPA no puede calcular el porcentaje.
+![[Pasted image 20260528204214.png]]
+![[Pasted image 20260528204026.png]]
+Prueba de carga
+```
+oc run load-gen --image=registry.access.redhat.com/ubi8/ubi --restart=Never -- /bin/bash
+dnf install -y wget
+while true; do wget -q -O- http://python-basic; done
+```
+
+### Vertical Pod AutoScaler
+```
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: python-basic-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: python-basic
+  updatePolicy:
+    updateMode: "Auto"   # Off | Initial | Recreate | Auto
+  resourcePolicy:
+    containerPolicies:
+    - containerName: python-basic
+      minAllowed:
+        cpu: "50m"
+        memory: "64Mi"
+      maxAllowed:
+        cpu: "2"
+        memory: "1Gi"
+```
+
+| Modo      | Comportamiento                 |
+| --------- | ------------------------------ |
+| `Off`     | Solo recomienda, no aplica     |
+| `Initial` | Aplica solo al crear el pod    |
+| `Auto`    | Recrea pods con nuevos valores |
+## El Desglose de las Recomendaciones
+
+### 1. `target` (El Objetivo Ideal)
+
+- **CPU:** `30m` (mili-cores) | **Memoria:** `30Mi`
+    
+- **Significado:** Este es el valor real que el VPA considera óptimo para que tu Nginx corra de forma saludable en este momento. Si tu `updatePolicy` estuviera en `"Auto"`, el VPA reiniciaría el Pod justo ahora para clavarle exactamente `30m` de CPU y `30Mi` de memoria en los `requests`.
+    
+
+### 2. `lowerBound` (El Límite Inferior)
+
+- **CPU:** `25m` | **Memoria:** `30Mi`
+    
+- **Significado:** Es el piso mínimo. Si el consumo de tu Nginx baja drásticamente por las noches, el VPA nunca le asignará menos de esto. Mientras el Pod se mantenga consumiendo entre el `lowerBound` y el `upperBound`, el VPA no se molestará en reiniciar el Pod (evita reinicios innecesarios por fluctuaciones pequeñas).
+    
+
+### 3. `upperBound` (El Límite Superior)
+
+- **CPU:** `30m` | **Memoria:** `30Mi`
+    
+- **Significado:** Es el techo máximo estimado para picos de carga normales basados en el histórico actual. Si el Pod de repente empieza a consumir más que el `upperBound`, el VPA actuará de inmediato para subirle los recursos.
+    
+
+### 4. `uncappedTarget` (El Objetivo Sin Restricciones)
+
+- **CPU:** `49m` | **Memoria:** `262144k` (aprox. `256Mi`)
+    
+- **Significado:** **Esta es la métrica más interesante.** Te dice qué recursos le daría el VPA al contenedor si tú **no** le hubieras puesto límites en la sección `resourcePolicy` (el `minAllowed` y `maxAllowed` de tu YAML).
+
+### Blue-Green Deployment
+```
+# Deployment Blue (versión actual)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-basic-blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: python-basic
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: python-basic
+        version: blue
+    spec:
+      containers:
+      - name: python-basic
+        image: python-basic:v1
+---
+# Deployment Green (nueva versión)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-basic-green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: python-basic
+      version: green
+  template:
+    metadata:
+      labels:
+        app: python-basic
+        version: green
+    spec:
+      containers:
+      - name: python-basic
+        image: python-basic:v2
+---
+# Service apuntando a Blue
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-basic
+spec:
+  selector:
+    app: python-basic
+    version: blue     # <-- cambiar a "green" para el switch
+  ports:
+  - port: 8080
+```
+Dos versiones en paralelo; el switch es instantaneo cambiando el Service
+### Canary Deployment
+```
+# Route con split de tráfico
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: python-basic
+spec:
+  host: python-basic.apps.cluster.example.com
+  to:
+    kind: Service
+    name: python-basic-stable
+    weight: 90          # 90% al stable
+  alternateBackends:
+  - kind: Service
+    name: python-basic-canary
+    weight: 10          # 10% al canary
+  port:
+    targetPort: 8080
+```
+
+Prueba
+```
+for i in $(seq 1 20); do curl -s https://python-basic.apps.cluster.example.com/version done
+```
+
+
+### Dia 6: Secrets
+```
+echo -n "MiPasswordSeguro" | base64
+```
+
+Encriptacion de etcd
+```
+oc patch apiserver cluster --type=merge -p '{"spec":{"encryption":{"type":"aescbc"}}}'
+```
+
+Install Kubeseal
+https://github.com/bitnami-labs/sealed-secrets
+```shell
+helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+```
+
+```shell
+helm install sealed-secrets -n kube-system --set-string fullnameOverride=sealed-secrets-controller sealed-secrets/sealed-secrets
+```
+
+```
+oc get pods -n kube-system
+```
+
+Cifrar un Secret localmente
+```
+kubeseal --format=yaml < mi-secret.yaml > mi-secret-sealed.yaml
+```
+
+```
+oc create secret generic mi-password-db \ --from-literal=password='SuperSecret123' \ --dry-run=client -o yaml | \ kubeseal --format=yaml > sealed-secret-db.yaml
+```
+
+Cifrar en modo Offline
+```
+kubeseal --fetch-cert > llave-publica-cluster.pem
+```
+
+```
+kubeseal --cert=llave-publica-cluster.pem --format=yaml < mi-secreto.yaml > mi-secreto-sealed.yaml
+```
+
+
+Por defecto, `kubeseal` utiliza un modo llamado **`strict`** (estricto). Esto significa que la llave pública cifra el secreto combinándolo con el **nombre del secreto** y el **namespace** (`admin-admin`).
+
+Si intentamos copiar el `SealedSecret` de arriba y cambiarle el namespace a `admin-2` a mano en el YAML para reutilizarlo, el controlador de OpenShift **fallará al descifrarlo** y arrojará un error en los logs. Esto es una medida de seguridad espectacular para evitar que un desarrollador le robe secretos a otro proyecto simplemente cambiando el destino del despliegue.
+
+
+Ejercicio 1
+Secret
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  namespace: admin-admin
+type: Opaque
+data:
+  DB_USER: cm9vdA==
+  DB_PASSWORD: UGFzczEyMw==
+```
+Deployment
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-db-app
+  namespace: admin-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-db
+  template:
+    metadata:
+      labels:
+        app: backend-db
+    spec:
+      containers:
+      - name: python-app
+        image: registry.access.redhat.com/ubi9/python-39:latest
+        env:
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_USER
+        - name: DATABASE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_PASSWORD
+```
+
+### Secrets de tipo tls
+
+¿Cómo funciona la arquitectura por detrás?
+
+Cuando montas un `Secret` como volumen, el plano de control de OpenShift y el motor de contenedores del nodo (CRI-O) trabajan en equipo para realizar un montaje de tipo **tmpfs** (un disco virtual residente puramente en la memoria RAM del nodo).
+
+Características clave de este comportamiento:
+
+- **Seguridad Absoluta:** Los archivos del certificado (`tls.crt` y `tls.key`) **nunca se escriben en el disco duro físico del Worker**. Si alguien apaga el servidor o roba el disco, no hay rastro de las llaves.
+    
+- **Actualización en Caliente (Hot Swap):** El proceso `kubelet` del nodo revisa constantemente si el Secret cambió en la API de OpenShift. Si lo actualizas, `kubelet` actualiza los archivos simbióticos dentro del contenedor en cuestión de minutos **sin reiniciar el Pod**.
+    
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-nginx
+  namespace: admin-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-secure
+  template:
+    metadata:
+      labels:
+        app: web-secure
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        volumeMounts:
+        - name: cert-volume
+          mountPath: "/etc/nginx/certs"
+          readOnly: true
+      volumes:
+      - name: cert-volume
+        secret:
+          secretName: nginx-certs
+```
+
+Configuración de Nginx (`nginx.conf`)
+
+Para que el contenedor de Nginx realmente aproveche estos archivos montados, necesita un archivo de configuración que le indique dónde buscar las llaves para activar el puerto `443` (HTTPS).
+
+```
+server {
+    listen              443 ssl;
+    server_name         mi-app.admin-2.svc;
+
+    # Rutas exactas donde el volumen del Secret dejará los archivos
+    ssl_certificate     /etc/nginx/certs/tls.crt;
+    ssl_certificate_key /etc/nginx/certs/tls.key;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+    }
+}
+```
+
+
+```
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \ -keyout tls.key \ -out tls.crt \ -subj "/CN=mi-app.admin-admin.svc"
+```
+
+```
+oc create secret tls nginx-certs \ --cert=tls.crt \ --key=tls.key \ -n admin-admin
+```
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nginx-certs
+  namespace: admin-admin
+type: kubernetes.io/tls
+data:
+  # Certificado de pruebas codificado en Base64
+  tls.crt: |
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURTekNDQm9HZ0F3SUJBZ0lVSm9wM2N3
+    MXV4RjZCc0I0eTd6dmU2K0R4dFlvd0RRWUpLb1pJaHZjTkFRRUwKQlFBd01URUxNQWtHQTFV
+    QmhNQ1ZWTXhGekFWQmdOVkJBb01EbWxoZDJVdVlXUnRhVzR0WVdSdGFXNHVjM1pqCk1CNFhE
+    VEl3TlRFeE16QXdNRFl3TUZvWERUSXhOVEV4TXpBd01EWXdNRm93TVRFTE1Ba0dBMVRequest
+    QmhNQ1ZWTXgKRnpBVkJnTlZCQU9NRG1saGQyVXVZV1J0YVc0dFlXUnRhVzR1YzNTak1JSUJJ
+    akFOQmdrcWhraUc5dzBCQVFFRgpBQU9DQVE4QU1JSUJDZ0tDQVFFQXp2b0t3U1l0K2p0YmRN
+    bW9zS2t5Cg==
+  
+  # Llave privada de pruebas codificada en Base64
+  tls.key: |
+    LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFR
+    RUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRRHp2b0t3U1l0K2p0YmQKTW1vc0treVVvN0ZBcjdG
+    bThwN00rejd2ZTYrRHh0WW93RFFZSktvWklodmNOQVFFTEJRQXdNVEVMTUFrR0ExVUUKQmhN
+    Q1ZWTXhGekFWQmdOVkJBb01EbWxoZDJVdVlXUnRhVzR0WVdSdGFXNHVjM1pqTUI0WERUSXdO
+    VEV4TXpBdwpNRFl3TUZvWERUSXhOVEV4TXpBd01EWXdN">
+```
+
+Cifrar etcd
+```
+oc create secret generic secreto-auditoria \
+  --from-literal=token-secreto='ClaveSuperSecretaDeEtcd' \
+  -n admin-admin
+```
+
+```
+etcdctl get /kubernetes.io/secrets/admin-admin/secreto-auditoria
+```
+
+Encriptacion
+```
+oc patch apiserver cluster --type=merge -p '{"spec":{"encryption":{"type":"aescbc"}}}'
+```
+
+Monitoreo de avance de encriptacion
+```
+oc get apiserver cluster
+```
+
+En logs
+```
+oc logs -n openshift-kube-apiserver-operator deployment/kube-apiserver-operator | grep -E "encryption|migration"
+```
+
+En Prometheus
+```
+apiserver_encryption_migrated_resources_count
+```
+## 1. El Impacto en la Funcionalidad (Disponibilidad del Clúster)
+
+**Riesgo de Downtime: Casi Cero.** OpenShift no bloquea la base de datos ni apaga el API Server para cifrar. El operador de OpenShift (`kube-apiserver-operator`) realiza una **migración progresiva y en caliente**.
+
+- **Cómo funciona por detrás:** El operador crea una llave de cifrado y luego empieza a reescribir cada Secreto y ConfigMap uno a uno. Si una aplicación pide un secreto a mitad del proceso, el API Server es lo suficientemente inteligente como para saber si debe leerlo con la llave nueva o en texto plano (basándose en el prefijo `k8s:enc:`). Las aplicaciones no experimentan interrupciones.
+
+
+## 2. El Impacto en el Rendimiento (Performance)
+
+Aquí es donde sí hay un costo real, aunque hoy en día es marginal:
+
+- **Consumo de CPU en los Masters:** Cifrar y descifrar datos sobre la marcha requiere ciclos de reloj de la CPU. Cada vez que un Pod arranque, se mueva o requiera leer un Secret/ConfigMap, los nodos Master tendrán que descifrarlo en memoria RAM.
+
+- **Mitigación moderna:** Los procesadores modernos (tanto en AWS como en servidores Bare-Metal Intel/AMD) cuentan con instrucciones **AES-NI** por hardware. Esto significa que el cifrado se procesa casi a la velocidad del silicio, por lo que el aumento de consumo de CPU en los Masters suele ser de apenas un **1% a 3%**.
+
+## 3. El Verdadero Peligro: Recuperación ante Desastres (Disaster Recovery)
+
+Este es el único punto donde aplicar el cifrado se vuelve "peligroso" si no se gestiona con disciplina de arquitectura: **Los Backups de etcd.**
+
+- **El escenario sin cifrado:** Si el clúster muere por completo, puedes tomar un backup viejo de etcd, restaurarlo en nodos nuevos y levantar el plano de control fácilmente.
+    
+- **El escenario con cifrado:** El backup de etcd ahora contiene datos encriptados. Para poder restaurar ese backup con éxito en el futuro, **necesitas obligatoriamente las llaves de cifrado activas del clúster**.
+    
+
+>  Si pierdes el clúster y la configuración de las llaves de cifrado que estaban activas en el momento de tomar el backup, ese backup de etcd se convierte en un archivo de basura binaria completamente inútil. No podrás recuperar el clúster.
+
+
+Comparativa
+
+| **Característica / Escenario**               | **Sin Cifrado en etcd (Solo Secret Nativo)**                                                             | **Con Cifrado en etcd Activo**                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Acceso desde `oc get secret`**             | Legible (Cualquiera con permisos de RBAC/Namespace lo ve).                                               | **Exactamente igual**. El API Server lo descifra automáticamente para los usuarios autorizados.    |
+| **Ataque físico / Robo de disco del Master** | **Peligro total.** El atacante lee las contraseñas corporativas en texto plano directamente del disco. | **Protegido.** El atacante solo ve basura binaria (`k8s:enc:`). El disco es inútil sin las llaves. |
+| **Backups de etcd expuestos**                | **Inseguro.** Si alguien roba un snapshot del backup de etcd, expone los secretos de toda la empresa.  | **Seguro.** El archivo de backup está encriptado en reposo.                                        |
+| **Cumplimiento de Normativas (Compliance)**  | **Falla.** No pasa auditorías de estándares estrictos como PCI-DSS, HIPAA o ISO 27001.                 | **Cumple.** Satisface el requerimiento técnico de _Encryption at Rest_ (Cifrado en reposo).        |
