@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: quarkus-demo
-        image: quay-registry-quay-quay.apps.cluster-kc4hf.dynamic.redhatworkshops.io/developer/quarkus-demo:cf9bd2a582ba8d14878c1ce3e51a22e5fd9ba52b_dev
+        image: quay-registry-quay-quay.apps.cluster-kc4hf.dynamic.redhatworkshops.io/developer/quarkus-demo:bf82ff6070a2a8a7c35b7937b40b77cb80c38eb4_dev
         ports:
         - containerPort: 8080
         resources:
