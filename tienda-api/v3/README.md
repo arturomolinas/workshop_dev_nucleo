@@ -30,6 +30,11 @@ curl http://localhost:8080/productos
 curl -H "X-Correlation-ID: req-12345-xyz" http://localhost:8080/productos
 ```
 
+Obtener perifericos de pagina 2
+```
+curl "http://localhost:8080/productos?categoria=perifericos&page=2&limit=5"
+```
+
 HPA
 ```
 curl "http://localhost:8080/stress?seconds=15"
