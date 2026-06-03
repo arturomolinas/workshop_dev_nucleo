@@ -14,6 +14,7 @@ Pruebas
 APP=$(oc get route metrics-demo -n metrics-app -o jsonpath='{.spec.host}')
 
 # Counter — éxitos y errores
+```
 curl https://$APP/api/contador
 curl https://$APP/api/contador
 curl "https://$APP/api/contador?error=true"
@@ -31,3 +32,4 @@ for i in {1..10}; do curl https://$APP/api/error; done
 
 # Ver el endpoint de métricas raw
 curl https://$APP/q/metrics | grep workshop
+```
