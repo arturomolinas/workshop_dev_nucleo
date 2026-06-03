@@ -59,3 +59,21 @@ If you want to learn more about building native executables, please consult <htt
 - SmallRye Health ([guide](https://quarkus.io/guides/smallrye-health)): Monitor service health
 - REST ([guide](https://quarkus.io/guides/rest)): Build RESTful web services and APIs using Jakarta REST (formerly JAX-RS)
 - REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
+
+
+### Tests
+| Endpoint                          | Qué demuestra                                               |
+| --------------------------------- | ----------------------------------------------------------- |
+| `GET /hello`                      | Los 5 niveles en orden + error con excepción                |
+| `GET /hello/contexto?nombre=Juan` | MDC manual — `usuario`, `endpoint`, `requestId` en cada log |
+| `GET /hello/niveles`              | Un log de cada nivel para comparar el output                |
+| `GET /health/ready`               | Readiness probe — auto por `quarkus-smallrye-health`        |
+| `GET /health/live`                | Liveness probe — auto por `quarkus-smallrye-health`         |
+
+# Run these commands on terminal:
+```
+curl http://localhost:8080/hello
+curl http://localhost:8080/hello/contexto?nombre=Jose
+curl http://localhost:8080/hello/niveles
+curl http://localhost:8080/hello | jq .
+```
