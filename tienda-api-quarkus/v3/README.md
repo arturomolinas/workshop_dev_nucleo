@@ -1,3 +1,4 @@
+```
 v3: Logging Estructurado + Headers de Correlación
 Incluye todos los de v2, más:
 
@@ -9,6 +10,8 @@ GET	/version	Igual v2	—	Devuelve X-Correlation-ID
 GET	/health	Igual v2	—	Devuelve X-Correlation-ID
 GET	/stress	Igual v2, con logs de inicio/fin	—	Devuelve X-Correlation-ID
 GET	/error-demo	NUEVO: Genera excepción para demo de error logging	—	Devuelve X-Correlation-ID
+```
+
 Headers
 
 Request:
