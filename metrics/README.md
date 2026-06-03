@@ -1,3 +1,4 @@
+```
 metrics-app (namespace)
   └── metrics-demo (Quarkus + Micrometer)
         └── GET /q/metrics  ← endpoint Prometheus
@@ -14,7 +15,7 @@ Pruebas
 APP=$(oc get route metrics-demo -n metrics-app -o jsonpath='{.spec.host}')
 
 # Counter — éxitos y errores
-```
+
 curl https://$APP/api/contador
 curl https://$APP/api/contador
 curl "https://$APP/api/contador?error=true"
