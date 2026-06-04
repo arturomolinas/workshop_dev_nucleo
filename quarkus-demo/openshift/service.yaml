@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: quarkus-demo
-  namespace: proyecto-user13
+  namespace: admin-admin
 spec:
   type: ClusterIP
   selector:
