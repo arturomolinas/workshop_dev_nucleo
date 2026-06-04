@@ -60,3 +60,17 @@ If you want to learn more about building native executables, please consult <htt
 - REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
 - Logging JSON ([guide](https://quarkus.io/guides/logging#json-logging)): Add JSON formatter for console logging
 - SmallRye Health ([guide](https://quarkus.io/guides/smallrye-health)): Monitor service health
+
+Tests
+```
+APP=$(oc get route metrics-demo -n metrics-app -o jsonpath='{.spec.host}')
+
+# Generar métricas de los 3 tipos
+curl https://$APP/api/contador
+curl https://$APP/api/contador
+curl "https://$APP/api/contador?error=true"
+curl "https://$APP/api/gauge?accion=entrar"
+curl "https://$APP/api/gauge?accion=entrar"
+curl "https://$APP/api/gauge?accion=salir"
+curl "https://$APP/api/timer?ms=500"
+```
