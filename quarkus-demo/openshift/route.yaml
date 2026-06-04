@@ -2,7 +2,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: quarkus-demo
-  namespace: proyecto-user13
+  namespace: admin-admin
 spec:
   port:
     targetPort: 8080
