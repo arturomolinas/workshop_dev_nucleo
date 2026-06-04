@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: quarkus-demo
-  namespace: admin-admin
+  namespace: proyecto-user13
   labels:
     app: quarkus-demo
 spec:
