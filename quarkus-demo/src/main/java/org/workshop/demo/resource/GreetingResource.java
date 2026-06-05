@@ -16,7 +16,7 @@ public class GreetingResource {
     public Map<String, String> info() {
         return Map.of(
             "app",       "quarkus-demo",
-            "version",   "1.0.0",
+            "version",   "1.0.1",
             "timestamp", Instant.now().toString()
         );
     }

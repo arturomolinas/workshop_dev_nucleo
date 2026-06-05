@@ -1,0 +1,12 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: quarkus-demo
+  namespace: admin-admin
+spec:
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: quarkus-demo
+    weight: 100
